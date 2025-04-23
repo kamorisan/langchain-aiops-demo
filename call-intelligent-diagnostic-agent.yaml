@@ -1,0 +1,347 @@
+- route:
+    id: call-intelligent-diagnostic-agent
+    from:
+      description: "tools: call IDA"
+      uri: langchain4j-tools
+      parameters:
+        description: call Intelligent Diagnostic Agent
+        tags: ca
+        toolId: call-intelligent-diagnostic-agent
+      steps:
+        - to:
+            uri: direct
+            parameters:
+              name: CA_to_IDA
+        - to:
+            uri: direct
+            parameters:
+              name: call_IDA
+        - log:
+            message: ${body}
+- route:
+    id: route-2114
+    description: call from CA to IDA
+    from:
+      uri: direct
+      parameters:
+        name: CA_to_IDA
+      steps:
+        - to:
+            description: getHistory
+            uri: direct
+            parameters:
+              name: getHistory
+            disabled: false
+        - process:
+            description: AI message
+            disabled: false
+            ref: callCAtoIDA
+        - log:
+            message: ${body}
+        - to:
+            description: "chat: CA to IDA"
+            uri: langchain4j-chat
+            parameters:
+              chatId: ca-to-ida
+              chatOperation: CHAT_MULTIPLE_MESSAGES
+        - to:
+            description: Communication Agent (CA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-2319
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            uri: direct
+            parameters:
+              name: setAiMessage_CA
+        - log:
+            message: "CA to IDA: ${body}"
+- route:
+    id: route-2746
+    description: Get Container Metrics (CPU & Memory Usage)
+    from:
+      id: from-3771
+      description: Get Container Metrics and Logs
+      uri: langchain4j-tools
+      parameters:
+        description: Get Container Metrics
+        parameter.container: string
+        tags: ida
+        toolId: ida-get-container-metrics-and-logs
+      steps:
+        - setProperty:
+            description: set api_server
+            disabled: false
+            expression:
+              simple:
+                expression: "{{openshift.monitoring.server}}"
+            name: api_server
+        - setProperty:
+            description: set start
+            disabled: false
+            expression:
+              simple: ${date-with-timezone:now-4m:UST:yyyy-MM-dd'T'HH:mm:ss'Z'}
+            name: start
+        - setProperty:
+            description: set end
+            disabled: false
+            expression:
+              simple: ${date-with-timezone:now:UST:yyyy-MM-dd'T'HH:mm:ss'Z'}
+            name: end
+        - setProperty:
+            description: set container
+            disabled: false
+            expression:
+              simple:
+                expression: ${header.container}
+            name: container
+        - to:
+            id: to-3922
+            uri: direct
+            parameters:
+              name: get-cpu
+            disabled: true
+        - to:
+            id: to-4158
+            uri: direct
+            parameters:
+              name: get-memory
+            disabled: true
+        - setBody:
+            id: setBody-3430
+            disabled: true
+            expression:
+              simple:
+                expression: |-
+                  {
+                    "container": "${exchangeProperty.container}",
+                    ${exchangeProperty.response_cpu},
+                    ${exchangeProperty.response_memory}
+                  }
+        - setBody:
+            id: setBody-3502
+            expression:
+              simple:
+                expression: ${header.container} のメトリクスとログを確認します。
+        - to:
+            description: Intelligent Diagnostic Agent (IDA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-1142
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            id: to-3637
+            uri: direct
+            parameters:
+              name: setAiMessage_IDA
+        - choice:
+            id: choice-3468
+            otherwise:
+              id: otherwise-2762
+              steps:
+                - setBody:
+                    id: setBody-1840
+                    expression:
+                      simple:
+                        expression: >-
+                          {
+                            "container": "postgresql",
+                            "cpu_usage": 10.5,
+                            "memory_usage": 25.7,
+                            "log": "pg_ctl: another server might be running; trying to start server anyway\nwaiting for server to start....2025-03-17 00:46:25.384 UTC [19] LOG: listening on Unix socket \"/var/run/postgresql/.s.PGSQL.5432\"\n2025-03-17 00:46:25.387 UTC [19] LOG: listening on Unix socket \"/tmp/.s.PGSQL.5432\"\n2025-03-17 00:46:25.400 UTC [19] LOG: redirecting log output to logging collector process\n2025-03-17 00:46:25.400 UTC [19] HINT: Future log output will appear in directory \"log\".\ndone\nserver started\n/var/run/postgresql:5432 - accepting connections\n=> sourcing /usr/share/container-scripts/postgresql/start/set_passwords.sh ...\nALTER ROLE\nwaiting for server to shut down.... done\nserver stopped\nStarting server...\n2025-03-17 00:46:25.720 UTC [1] LOG: listening on IPv4 address \"0.0.0.0\", port 5432\n2025-03-17 00:46:25.720 UTC [1] LOG: listening on IPv6 address \"::\", port 5432\n2025-03-17 00:46:25.723 UTC [1] LOG: listening on Unix socket \"/var/run/postgresql/.s.PGSQL.5432\"\n2025-03-17 00:46:25.726 UTC [1] LOG: listening on Unix socket \"/tmp/.s.PGSQL.5432\"\n2025-03-17 00:46:25.737 UTC [1] LOG: redirecting log output to logging collector process\n2025-03-17 00:46:25.737 UTC [1] HINT: Future log output will appear in directory \"log\".\nerror: remaining connection slots are reserved for non-replication superuser connections"
+                          }
+            when:
+              - id: when-7792
+                steps:
+                  - setBody:
+                      id: setBody-1248
+                      expression:
+                        simple:
+                          expression: >-
+                            {
+                              "container": "petstore-demo",
+                              "cpu_usage": 3.8,
+                              "memory_usage": 9.8,
+                              "log": "> rest-express@1.0.0 start\n> NODE_ENV=production node dist/index.js\n12:45:02 AM [express] serving on port 5000\nerror: remaining connection slots are reserved for non-replication superuser connections\nat /app/node_modules/pg-pool/index.js:45:11\nat process.processTicksAndRejections (node:internal/process/task_queues:95:5)\nat async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22\nat async Strategy._verify (file:///app/dist/index.js:131:24)"
+                            }
+                expression:
+                  simple:
+                    expression: ${header.container} == "petstore-demo"
+        - log:
+            id: log-4113
+            message: ${body}
+- route:
+    id: route-1475
+    description: get-memory
+    from:
+      id: from-3872
+      uri: direct
+      parameters:
+        name: get-memory
+      steps:
+        - setProperty:
+            description: set query
+            expression:
+              simple: sum(container_memory_working_set_bytes{namespace="petstore",
+                pod=~"${exchangeProperty.container}-.*",
+                container="${exchangeProperty.container}"}) * 100 /
+                sum(container_spec_memory_limit_bytes{namespace="petstore",
+                pod=~"${exchangeProperty.container}-.*",
+                container="${exchangeProperty.container}"})
+            name: query
+        - removeHeaders:
+            id: removeHeaders-3264
+            pattern: "*"
+        - setHeaders:
+            id: setHeaders-3188
+            headers:
+              - expression:
+                  simple:
+                    expression: Bearer {{openshift.api.token}}
+                name: Authorization
+              - expression:
+                  constant:
+                    expression: application/json
+                name: Accept
+        - toD:
+            uri: https
+            parameters:
+              end: ${exchangeProperty.end}
+              httpMethod: GET
+              httpUri: ${exchangeProperty.api_server}/api/v1/query_range
+              query: ${exchangeProperty.query}
+              start: ${exchangeProperty.start}
+              step: 60s
+            disabled: false
+        - unmarshal:
+            id: unmarshal-3570
+            disabled: false
+            json: {}
+        - setBody:
+            id: setBody-1225
+            disabled: false
+            expression:
+              simple:
+                expression: '"memory_usage": ${body[data][result][0][values][0][1]} %'
+        - log:
+            id: log-3952
+            disabled: true
+            message: ${body}
+        - setProperty:
+            id: setProperty-4238
+            expression:
+              simple:
+                expression: ${body}
+            name: response_memory
+- route:
+    id: route-2948
+    description: get-cpu
+    from:
+      uri: direct
+      parameters:
+        name: get-cpu
+      steps:
+        - setProperty:
+            description: set query
+            expression:
+              simple:
+                expression: pod:container_cpu_usage:sum{pod=~"${exchangeProperty.container}-.*",
+                  namespace="petstore"} * 100 /
+                  (sum(kube_pod_resource_limit{resource="cpu",
+                  pod=~"${exchangeProperty.container}-.*",
+                  namespace="petstore"}) BY (pod, namespace))
+            name: query
+        - removeHeaders:
+            pattern: "*"
+        - setHeaders:
+            headers:
+              - expression:
+                  simple:
+                    expression: Bearer {{openshift.api.token}}
+                name: Authorization
+              - expression:
+                  constant:
+                    expression: application/json
+                name: Accept
+        - toD:
+            uri: https
+            parameters:
+              end: ${exchangeProperty.end}
+              httpMethod: GET
+              httpUri: ${exchangeProperty.api_server}/api/v1/query_range
+              query: ${exchangeProperty.query}
+              start: ${exchangeProperty.start}
+              step: 60s
+            disabled: false
+        - unmarshal:
+            disabled: false
+            json: {}
+        - setBody:
+            disabled: false
+            expression:
+              simple:
+                expression: '"cpu_usage": ${body[data][result][0][values][0][1]} %'
+        - log:
+            id: log-3423
+            disabled: true
+            message: ${body}
+        - setProperty:
+            expression:
+              simple:
+                expression: ${body}
+            name: response_cpu
+- route:
+    id: route-test11111111
+    from:
+      id: from-1514
+      uri: direct
+      parameters:
+        name: call_IDA
+      steps:
+        - to:
+            description: getHistory
+            uri: direct
+            parameters:
+              name: getHistory
+        - process:
+            description: AI message
+            ref: chatWithIDA
+        - log:
+            message: ${body}
+        - to:
+            description: "tools: IDA"
+            uri: langchain4j-tools
+            parameters:
+              tags: ida
+              toolId: myllm-ida
+        - to:
+            description: Intelligent Diagnostic Agent (IDA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-4012
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            uri: direct
+            parameters:
+              name: setAiMessage_IDA
+            disabled: false
+        - log:
+            message: ${body}

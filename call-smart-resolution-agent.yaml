@@ -1,0 +1,244 @@
+- route:
+    id: call-smart-resolution-agent
+    from:
+      description: "tools: call SRA"
+      uri: langchain4j-tools
+      parameters:
+        description: call Smart Resolution Agent
+        tags: ca
+        toolId: call-smart-resolution-agent
+      steps:
+        - to:
+            uri: direct
+            parameters:
+              name: CA_to_SRA
+        - to:
+            uri: direct
+            parameters:
+              name: call_SRA
+        - log:
+            message: ${body}
+- route:
+    id: route-3135
+    description: call from CA to SRA
+    from:
+      uri: direct
+      parameters:
+        name: CA_to_SRA
+      steps:
+        - to:
+            description: getHistory
+            uri: direct
+            parameters:
+              name: getHistory
+            disabled: false
+        - process:
+            description: AI message
+            disabled: false
+            ref: callCAtoSRA
+        - log:
+            message: ${body}
+        - to:
+            description: "chat: CA to SRA"
+            uri: langchain4j-chat
+            parameters:
+              chatId: ca-to-sra
+              chatOperation: CHAT_MULTIPLE_MESSAGES
+        - to:
+            description: Communication Agent (CA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-1385
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            id: to-2521
+            uri: direct
+            parameters:
+              name: setAiMessage_CA
+        - log:
+            id: log-1891
+            message: "CA to SRA: ${body}"
+- route:
+    id: route-2224
+    description: call SRA
+    from:
+      id: from-7401
+      uri: direct
+      parameters:
+        name: call_SRA
+      steps:
+        - to:
+            id: to-4022
+            description: getHistory
+            uri: direct
+            parameters:
+              name: getHistory
+        - process:
+            id: process-3566
+            description: AI message
+            ref: chatWithSRA
+        - log:
+            id: log-1738
+            message: ${body}
+        - to:
+            id: to-1339
+            description: "tools: SRA"
+            uri: langchain4j-tools
+            parameters:
+              tags: sra
+              toolId: myllm-sra
+        - to:
+            description: Smart Resolution Agent (SRA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: true
+        - to:
+            uri: direct
+            parameters:
+              name: setAiMessage_SRA
+            disabled: false
+        - log:
+            id: log-2389
+            message: ${body}
+- route:
+    id: route-1547
+    description: "SRA: Generate multiple viable solution strategies for problem"
+    from:
+      id: from-2558
+      description: "tools: SRA"
+      uri: langchain4j-tools
+      parameters:
+        description: Generate multiple viable solution strategies for problems
+        tags: sra
+        toolId: sra-presenting-generated-solution
+      steps:
+        - setBody:
+            id: setBody-2050
+            expression:
+              simple:
+                expression: 問題解決のための対策を検討します。
+        - to:
+            description: Smart Resolution Agent (SRA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-3788
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            uri: direct
+            parameters:
+              name: setAiMessage_SRA
+            disabled: false
+        - to:
+            description: getHistory
+            uri: direct
+            parameters:
+              name: getHistory
+        - process:
+            description: AI message
+            ref: SRA_presenting_generated_solution
+        - log:
+            message: ${body}
+        - to:
+            description: "chat: SRA"
+            uri: langchain4j-chat
+            parameters:
+              chatId: call-sra
+              chatOperation: CHAT_MULTIPLE_MESSAGES
+        - log:
+            message: ${body}
+- route:
+    id: route-3538
+    description: "SRA: Run Ansible Playbook"
+    from:
+      description: "tools: SRA"
+      uri: langchain4j-tools
+      parameters:
+        description: Run Ansible Playbook
+        parameter.playbook_name: string
+        tags: sra
+        toolId: sra-run-playbook
+      steps:
+        - setVariable:
+            expression:
+              simple:
+                expression: ${header.playbook_name}
+            name: playbook.name
+        - toD:
+            id: to-2308
+            uri: https
+            parameters:
+              authenticationPreemptive: true
+              authPassword: redhat
+              authUsername: admin
+              httpMethod: GET
+              httpUri: "{{controller.url}}/api/v2/job_templates/?name=${header.playbook_name}"
+              proxyAuthMethod: Basic
+        - setVariable:
+            id: setVariable-2053
+            expression:
+              jsonpath:
+                expression: $.results[0].url
+            name: playbook.id
+        - setVariable:
+            id: setVariable-2571
+            expression:
+              simple:
+                expression: "{{controller.url}}${variable.playbook.id}launch/"
+            name: playbook.url
+        - removeHeaders:
+            id: removeHeaders-1617
+            pattern: "*"
+        - setHeader:
+            id: setHeader-1517
+            expression:
+              simple:
+                expression: application/json
+            name: Content-Type
+        - toD:
+            id: to-2308
+            uri: https
+            parameters:
+              authenticationPreemptive: true
+              authPassword: redhat
+              authUsername: admin
+              httpMethod: POST
+              httpUri: ${variable.playbook.url}
+              proxyAuthMethod: Basic
+            disabled: false
+        - setBody:
+            expression:
+              simple:
+                expression: "Ansible Playbook: ${variable.playbook.name} を実行しました。"
+        - to:
+            description: Smart Resolution Agent (SRA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-2859
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            uri: direct
+            parameters:
+              name: setAiMessage_SRA
+            disabled: false
+        - log:
+            message: ${body}

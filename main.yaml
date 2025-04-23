@@ -1,0 +1,237 @@
+- route:
+    id: main
+    description: Message From Slack
+    from:
+      id: from-3396
+      description: From Slack
+      uri: slack
+      parameters:
+        channel: ai-ops-demo
+        naturalOrder: false
+      steps:
+        - log:
+            id: log-1398
+            message: ${body}
+        - filter:
+            id: filter-1206
+            steps:
+              - to:
+                  id: to-1388
+                  uri: direct
+                  parameters:
+                    name: start
+                  disabled: false
+            expression:
+              simple: ${body.user} == 'U0861SR91GE'
+- route:
+    id: route-2563
+    description: Main Route
+    from:
+      id: from-2980
+      uri: direct
+      parameters:
+        name: start
+      steps:
+        - setBody:
+            disabled: false
+            expression:
+              jsonpath:
+                expression: $.text
+        - to:
+            id: to-3244
+            uri: direct
+            parameters:
+              name: setUserMessage
+            disabled: false
+        - to:
+            id: to-1286
+            description: getHistory
+            uri: direct
+            parameters:
+              name: getHistory
+        - log:
+            disabled: true
+            message: ${body}
+        - process:
+            description: createPrompt
+            disabled: false
+            ref: createPromptForCommunicationAgent
+        - log:
+            disabled: true
+            message: ${body}
+        - to:
+            description: "tools: call CA"
+            uri: langchain4j-tools
+            parameters:
+              tags: ca
+              toolId: myllm
+        - to:
+            description: Communication Agent (CA)
+            uri: slack
+            parameters:
+              channel: ai-ops-demo
+              token: ***
+            disabled: false
+        - delay:
+            id: delay-1838
+            expression:
+              constant:
+                expression: "1000"
+        - to:
+            id: to-3183
+            uri: direct
+            parameters:
+              name: setAiMessage_CA
+        - log:
+            id: log-9825
+            message: "call CA: ${body}"
+- route:
+    id: route-1920
+    description: get History
+    from:
+      id: from-3351
+      description: getHistory
+      uri: direct
+      parameters:
+        name: getHistory
+      steps:
+        - setBody:
+            id: setBody-2900
+            description: Remove Body
+            expression:
+              constant:
+                expression: "null"
+        - marshal:
+            id: marshal-2225
+            description: to JSON
+            json: {}
+        - to:
+            id: to-5113
+            uri: kamelet:postgresql-sink
+            parameters:
+              query: select * from chat_messages
+        - setVariable:
+            id: setVariable-3041
+            expression:
+              simple:
+                expression: ${body}
+            name: chatHistory
+        - process:
+            id: process-1921
+            description: setChatHistory
+            ref: setChatHistory
+        - log:
+            id: log-2818
+            message: Receiving History is complete.
+- route:
+    id: setUserMessage
+    description: setUserMessage
+    from:
+      id: from-3692
+      uri: direct
+      parameters:
+        name: setUserMessage
+      steps:
+        - script:
+            expression:
+              groovy:
+                expression: |-
+                  def original = exchange.in.body as String
+                  def replaced = original.replaceAll("\\n","\\\\n")
+                  exchange.in.body = replaced
+        - setBody:
+            id: setBody-3987
+            expression:
+              simple:
+                expression: '{"message_class":"UserMessage", "sender":"User",
+                  "message_body":"${body}"}'
+        - to:
+            id: to-2968
+            uri: kamelet:postgresql-sink
+            parameters:
+              query: insert into chat_messages (message_class, sender, message_body) values
+                (:#message_class, :#sender, :#message_body)
+        - log:
+            id: log-5064
+            message: UserMessage INSERT completed
+- route:
+    id: route-1711
+    description: setAiMessage_CA
+    from:
+      uri: direct
+      parameters:
+        name: setAiMessage_CA
+      steps:
+        - script:
+            expression:
+              groovy:
+                expression: |-
+                  def original = exchange.in.body as String
+                  def replaced = original.replaceAll("\\n","\\\\n")
+                  exchange.in.body = replaced
+        - setBody:
+            expression:
+              simple:
+                expression: '{"message_class":"AiMessage", "sender":"Communication Agent (CA)",
+                  "message_body":"${body}"}'
+        - to:
+            uri: kamelet:postgresql-sink
+            parameters:
+              query: insert into chat_messages (message_class, sender, message_body) values
+                (:#message_class, :#sender, :#message_body)
+        - log:
+            message: AiMessage INSERT completed
+- route:
+    id: route-1440
+    description: setAiMessage_SRA
+    from:
+      uri: direct
+      parameters:
+        name: setAiMessage_SRA
+      steps:
+        - script:
+            expression:
+              groovy:
+                expression: |-
+                  def original = exchange.in.body as String
+                  def replaced = original.replaceAll("\\n","\\\\n")
+                  exchange.in.body = replaced
+        - setBody:
+            expression:
+              simple:
+                expression: '{"message_class":"AiMessage", "sender":"Smart Resolution Agent
+                  (SRA)", "message_body":"${body}"}'
+        - to:
+            uri: kamelet:postgresql-sink
+            parameters:
+              query: insert into chat_messages (message_class, sender, message_body) values
+                (:#message_class, :#sender, :#message_body)
+        - log:
+            message: AiMessage INSERT completed
+- route:
+    id: route-3066
+    description: setAiMessage_IDA
+    from:
+      uri: direct
+      parameters:
+        name: setAiMessage_IDA
+      steps:
+        - script:
+            expression:
+              groovy:
+                expression: |-
+                  def original = exchange.in.body as String
+                  def replaced = original.replaceAll("\\n","\\\\n")
+                  exchange.in.body = replaced
+        - setBody:
+            expression:
+              simple:
+                expression: '{"message_class":"AiMessage", "sender":"Intelligent Diagnostic
+                  Agent (IDA)", "message_body":"${body}"}'
+        - to:
+            uri: kamelet:postgresql-sink
+            parameters:
+              query: insert into chat_messages (message_class, sender, message_body) values
+                (:#message_class, :#sender, :#message_body)
+        - log:
+            message: AiMessage INSERT completed
