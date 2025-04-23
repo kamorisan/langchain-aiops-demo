@@ -70,7 +70,6 @@
             uri: slack
             parameters:
               channel: ai-ops-demo
-              token: ***
             disabled: false
         - delay:
             id: delay-1838

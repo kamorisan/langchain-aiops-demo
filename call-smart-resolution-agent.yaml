@@ -49,7 +49,6 @@
             uri: slack
             parameters:
               channel: ai-ops-demo
-              token: ***
             disabled: false
         - delay:
             id: delay-1385
@@ -98,7 +97,6 @@
             uri: slack
             parameters:
               channel: ai-ops-demo
-              token: ***
             disabled: true
         - to:
             uri: direct
@@ -130,7 +128,6 @@
             uri: slack
             parameters:
               channel: ai-ops-demo
-              token: ***
             disabled: false
         - delay:
             id: delay-3788
@@ -228,7 +225,6 @@
             uri: slack
             parameters:
               channel: ai-ops-demo
-              token: ***
             disabled: false
         - delay:
             id: delay-2859
